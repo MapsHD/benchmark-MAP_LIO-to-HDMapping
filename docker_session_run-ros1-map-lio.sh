@@ -10,15 +10,21 @@
 # only while someone subscribes to it. After the last message MAP_LIO prints
 # "End of the bag file" and keeps spinning; the control window waits for that
 # line and then shuts the session down.
+#
+# MAP_LIO reads the Hesai point format (float64 per-point timestamp). LiDAR
+# clouds with a relative float32 per-point time instead (e.g. Livox clouds
+# aggregated by livox_bag_aggregate) are converted to that format first, see
+# overlay/scripts/map_lio_input.py.
 
 IMAGE_NAME='map-lio_noetic'
 TMUX_SESSION='ros1_map_lio'
 
 DATASET_CONTAINER_PATH='/ros_ws/dataset/input.bag'
 CONVERTED_BAG_CONTAINER='/tmp/dataset_ros1.bag'
+HESAI_BAG_CONTAINER='/tmp/map_lio_input.bag'
 BAG_OUTPUT_CONTAINER='/ros_ws/recordings'
 CONFIG_MOUNT_CONTAINER='/ros_ws/config/map_lio.yaml'
-DEFAULT_CONFIG_CONTAINER='/ros_ws/src/MAP_LIO/config/hesai.yaml'
+CONFIG_DIR_CONTAINER='/ros_ws/src/MAP_LIO/config'
 
 RECORDED_BAG_NAME="recorded-MAP_LIO.bag"
 HDMAPPING_OUT_NAME="output_hdmapping"
@@ -27,9 +33,10 @@ HDMAPPING_OUT_NAME="output_hdmapping"
 ODOM_TOPIC="${ODOM_TOPIC:-/Odometry}"
 CLOUD_TOPIC="${CLOUD_TOPIC:-/cloud_registered}"
 
-# MAP_LIO parameter file (LiDAR/IMU topics, extrinsics, noise, ranges).
-# Empty = MAP_LIO's own config/hesai.yaml.
-CONFIG_FILE="${CONFIG_FILE:-}"
+# MAP_LIO parameter file (LiDAR/IMU topics, extrinsics, noise, ranges): a file
+# on the host, or the name of one shipped in the image (MAP_LIO's hesai.yaml,
+# the benchmark's bunker.yaml).
+CONFIG_FILE="${CONFIG_FILE:-hesai.yaml}"
 
 # RViz on by default — the live view of how MAP_LIO tracks the dataset.
 USE_RVIZ="${USE_RVIZ:-1}"
@@ -46,7 +53,8 @@ usage() {
   echo "If no arguments are provided, a GUI file selector will be used."
   echo
   echo "Environment variables:"
-  echo "  CONFIG_FILE  - MAP_LIO parameter file (*.yaml)  (default: MAP_LIO's config/hesai.yaml)"
+  echo "  CONFIG_FILE  - MAP_LIO parameter file: a host *.yaml, or hesai.yaml / bunker.yaml"
+  echo "                 shipped in the image                (default: hesai.yaml)"
   echo "  ODOM_TOPIC   - MAP_LIO odometry output topic    (default: /Odometry)"
   echo "  CLOUD_TOPIC  - MAP_LIO registered cloud topic   (default: /cloud_registered)"
   echo "  USE_RVIZ     - 1/0, launch RViz live view       (default: 1)"
@@ -83,7 +91,18 @@ if [[ ! -e "$DATASET_HOST_PATH" ]]; then
   exit 1
 fi
 
-if [[ -n "$CONFIG_FILE" && ! -f "$CONFIG_FILE" ]]; then
+# Parameter file: a host file is mounted into the container; a plain name is
+# a file shipped in the image (checked inside the container).
+CONFIG_MOUNT=()
+if [[ -f "$CONFIG_FILE" ]]; then
+  CONFIG_FILE=$(realpath "$CONFIG_FILE")
+  CONFIG_MOUNT=(-v "$CONFIG_FILE":"$CONFIG_MOUNT_CONTAINER":ro)
+  CONFIG_CONTAINER="$CONFIG_MOUNT_CONTAINER"
+  CONFIG_DESC="$CONFIG_FILE (host)"
+elif [[ "$CONFIG_FILE" != */* ]]; then
+  CONFIG_CONTAINER="$CONFIG_DIR_CONTAINER/$CONFIG_FILE"
+  CONFIG_DESC="$CONFIG_FILE (shipped in the image)"
+else
   echo "Error: CONFIG_FILE does not exist: $CONFIG_FILE"
   exit 1
 fi
@@ -93,23 +112,12 @@ mkdir -p "$BAG_OUTPUT_HOST"
 DATASET_HOST_PATH=$(realpath "$DATASET_HOST_PATH")
 BAG_OUTPUT_HOST=$(realpath "$BAG_OUTPUT_HOST")
 
-# Parameter file: a host file is mounted into the container, otherwise the
-# one shipped with MAP_LIO is used.
-CONFIG_MOUNT=()
-if [[ -n "$CONFIG_FILE" ]]; then
-  CONFIG_FILE=$(realpath "$CONFIG_FILE")
-  CONFIG_MOUNT=(-v "$CONFIG_FILE":"$CONFIG_MOUNT_CONTAINER":ro)
-  CONFIG_CONTAINER="$CONFIG_MOUNT_CONTAINER"
-else
-  CONFIG_CONTAINER="$DEFAULT_CONFIG_CONTAINER"
-fi
-
 # RViz on/off resolved to a roslaunch boolean
 RVIZ_ARG=false; [[ "$USE_RVIZ" == "1" ]] && RVIZ_ARG=true
 
 echo "Input           : $DATASET_HOST_PATH"
 echo "Output dir      : $BAG_OUTPUT_HOST"
-echo "Parameter file  : ${CONFIG_FILE:-MAP_LIO config/hesai.yaml}"
+echo "Parameter file  : $CONFIG_DESC"
 echo "Odom topic      : $ODOM_TOPIC"
 echo "Cloud topic     : $CLOUD_TOPIC"
 
@@ -158,12 +166,23 @@ docker run -it --rm \
     echo "[convert] ROS 1 bag ready at: $ROS1_BAG"
     ls -la $ROS1_BAG
 
-    # ── Preflight: the LiDAR and IMU topics of the parameter file must be in ─
-    # the bag, otherwise MAP_LIO processes nothing and the run records no output.
-    if ! python3 /ros_ws/scripts/map_lio_preflight.py "$CONFIG_CONTAINER" "$ROS1_BAG"; then
-      echo "[preflight] input check failed, nothing is run"
+    # ── Input check + point format ──────────────────────────────────────────
+    # The LiDAR and IMU topics of the parameter file must be in the bag,
+    # otherwise MAP_LIO processes nothing and the run records no output.
+    # Clouds with a relative per-point time are converted to the Hesai point
+    # format into '"$HESAI_BAG_CONTAINER"' (written only then).
+    rm -f '"$HESAI_BAG_CONTAINER"'
+    if ! python3 /ros_ws/scripts/map_lio_input.py "$CONFIG_CONTAINER" "$ROS1_BAG" '"$HESAI_BAG_CONTAINER"'; then
+      echo "[input] input check failed, nothing is run"
       exit 42
     fi
+    if [[ -f '"$HESAI_BAG_CONTAINER"' ]]; then
+      MAP_LIO_BAG='"$HESAI_BAG_CONTAINER"'
+    else
+      MAP_LIO_BAG="$ROS1_BAG"
+    fi
+    export MAP_LIO_BAG
+    echo "[input] MAP_LIO reads: $MAP_LIO_BAG"
 
     tmux new-session -d -s '"$TMUX_SESSION"'
 
@@ -193,7 +212,7 @@ echo "[record] exit"
 source /opt/ros/noetic/setup.bash
 source /ros_ws/devel/setup.bash
 echo "[map_lio] launching map_lio_bench.launch (rviz=$RVIZ_ARG) ..."
-roslaunch map_lio map_lio_bench.launch bag_file:=$ROS1_BAG config:=$CONFIG_CONTAINER rviz:=$RVIZ_ARG 2>&1 | tee /tmp/map_lio.log
+roslaunch map_lio map_lio_bench.launch bag_file:=$MAP_LIO_BAG config:=$CONFIG_CONTAINER rviz:=$RVIZ_ARG 2>&1 | tee /tmp/map_lio.log
 '\'' C-m
 
     # ---------- PANE 3: diagnostics ----------

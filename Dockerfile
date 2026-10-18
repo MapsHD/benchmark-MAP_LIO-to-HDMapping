@@ -81,9 +81,11 @@ WORKDIR /ros_ws
 COPY ./src/MAP_LIO              ./src/MAP_LIO
 COPY ./src/map-lio-to-hdmapping ./src/map-lio-to-hdmapping
 
-# Benchmark launch (bag file and parameter file as roslaunch args) added into
-# the map_lio package; preflight check used by the run script.
+# Benchmark launch (bag file and parameter file as roslaunch args) and the
+# benchmark parameter files (next to MAP_LIO's own hesai.yaml) added into the
+# map_lio package; input check/conversion script used by the run script.
 COPY ./overlay/launch/  ./src/MAP_LIO/launch/
+COPY ./overlay/config/  ./src/MAP_LIO/config/
 COPY ./overlay/scripts/ /ros_ws/scripts/
 
 # Build MAP_LIO in lidar-inertial mode (no prior ALS map, USE_ALS=OFF, so

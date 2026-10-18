@@ -25,6 +25,10 @@ map). MAP_LIO is released for academic research use only, see its repository.
   `sensor_msgs/Imu` topic (ROS 2 bags are automatically converted to ROS 1
   format). MAP_LIO reads the Hesai driver's point format: `x`, `y`, `z`,
   `intensity` and a per-point `timestamp` (float64, absolute time in seconds).
+  Clouds with a relative per-point `time` (float32, seconds after the header
+  stamp), e.g. Livox clouds aggregated by
+  [livox_bag_aggregate](https://github.com/MapsHD/livox_bag_aggregate), are
+  converted to that format automatically.
 
 ## Step 1 — Clone with submodules
 
@@ -56,13 +60,18 @@ Or with no arguments to use a GUI file selector (requires `zenity`).
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `CONFIG_FILE` | MAP_LIO's `config/hesai.yaml` | MAP_LIO parameter file: LiDAR/IMU topics, LiDAR-IMU extrinsics, noise, range limits |
+| `CONFIG_FILE` | `hesai.yaml` | MAP_LIO parameter file: LiDAR/IMU topics, LiDAR-IMU extrinsics, noise, range limits. A file on the host, or the name of one shipped in the image |
 | `USE_RVIZ` | `1` | RViz live view |
 
-MAP_LIO's sensor setup lives in its parameter file. For your own sensor,
-copy [config/hesai.yaml](https://github.com/eugeniu1994/MAP_LIO/blob/master/config/hesai.yaml),
-set `common/lid_topic`, `common/imu_topic` and the LiDAR-IMU extrinsics, and
-pass it:
+MAP_LIO's sensor setup lives in its parameter file. The image ships two:
+
+| Name | Sensor |
+|------|--------|
+| `hesai.yaml` | MAP_LIO's own, Hesai LiDAR (`/hesai/pandar`, `/imu/data_raw`) |
+| `bunker.yaml` | Livox Mid-360 with its built-in IMU (`/livox/pointcloud`, `/livox/imu`), see [overlay/config/bunker.yaml](overlay/config/bunker.yaml) |
+
+For your own sensor, copy one of them, set `common/lid_topic`,
+`common/imu_topic` and the LiDAR-IMU extrinsics, and pass it:
 
 ```bash
 CONFIG_FILE=/path/to/my_sensor.yaml \
@@ -70,8 +79,10 @@ CONFIG_FILE=/path/to/my_sensor.yaml \
 ```
 
 Before anything starts, the script checks that both topics of the parameter
-file are in the bag, and warns if the LiDAR points carry no per-point
-`timestamp` (then MAP_LIO does not deskew the scans).
+file are in the bag and looks at the LiDAR point format: Hesai points are used
+as they are, points with a relative per-point `time` are converted to the Hesai
+format first (inside the container, the input bag is not changed), anything
+else gets a warning (MAP_LIO then does not deskew the scans).
 
 **What happens:**
 
