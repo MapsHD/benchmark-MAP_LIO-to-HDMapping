@@ -35,8 +35,8 @@ CLOUD_TOPIC="${CLOUD_TOPIC:-/cloud_registered}"
 
 # MAP_LIO parameter file (LiDAR/IMU topics, extrinsics, noise, ranges): a file
 # on the host, or the name of one shipped in the image (MAP_LIO's hesai.yaml,
-# the benchmark's bunker.yaml).
-CONFIG_FILE="${CONFIG_FILE:-hesai.yaml}"
+# the benchmark's bunker.yaml). Default: the Bunker DVI dataset (Livox Mid-360).
+CONFIG_FILE="${CONFIG_FILE:-bunker.yaml}"
 
 # RViz on by default — the live view of how MAP_LIO tracks the dataset.
 USE_RVIZ="${USE_RVIZ:-1}"
@@ -54,7 +54,7 @@ usage() {
   echo
   echo "Environment variables:"
   echo "  CONFIG_FILE  - MAP_LIO parameter file: a host *.yaml, or hesai.yaml / bunker.yaml"
-  echo "                 shipped in the image                (default: hesai.yaml)"
+  echo "                 shipped in the image                (default: bunker.yaml)"
   echo "  ODOM_TOPIC   - MAP_LIO odometry output topic    (default: /Odometry)"
   echo "  CLOUD_TOPIC  - MAP_LIO registered cloud topic   (default: /cloud_registered)"
   echo "  USE_RVIZ     - 1/0, launch RViz live view       (default: 1)"

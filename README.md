@@ -1,143 +1,64 @@
-## Hint
+# MAP_LIO to HDMapping simplified instruction
 
-Please change branch to [Bunker-DVI-Dataset-reg-1](https://github.com/MapsHD/benchmark-MAP_LIO-to-HDMapping/tree/Bunker-DVI-Dataset-reg-1) for quick experiment.
+## Step 1 (prepare data)
+Download the dataset `reg-1.bag` by clicking [link](https://cloud.cylab.be/public.php/dav/files/7PgyjbM2CBcakN5/reg-1.bag) or from the [Zenodo](https://zenodo.org/records/23069933) mirror (it is part of [Bunker DVI Dataset](https://charleshamesse.github.io/bunker-dvi-dataset)) and convert with [tool](https://github.com/MapsHD/livox_bag_aggregate) to `reg-1.bag-pc.bag`.
 
-## Example Dataset:
-
-Download the dataset from [Bunker DVI Dataset](https://charleshamesse.github.io/bunker-dvi-dataset/)
-
-# benchmark-MAP_LIO-to-HDMapping
-
-Runs the [MAP_LIO](https://github.com/eugeniu1994/MAP_LIO) LiDAR-inertial
-odometry on a ROS 1 bag file and converts the output to an
-[HDMapping](https://github.com/MapsHD/HDMapping) session.
-
-MAP_LIO (E. Vezeteu et al.) is a single-state maximum a posteriori (MAP)
-LiDAR-inertial estimator with data-driven covariances from local geometric
-uncertainty. It can additionally fuse a prior airborne (ALS) map and GNSS-INS
-poses; this benchmark builds and runs the LiDAR-inertial part only (no prior
-map). MAP_LIO is released for academic research use only, see its repository.
-
-## Prerequisites
-
-- Docker
-- A ROS 1 bag with a `sensor_msgs/PointCloud2` LiDAR topic and a
-  `sensor_msgs/Imu` topic (ROS 2 bags are automatically converted to ROS 1
-  format). MAP_LIO reads the Hesai driver's point format: `x`, `y`, `z`,
-  `intensity` and a per-point `timestamp` (float64, absolute time in seconds).
-  Clouds with a relative per-point `time` (float32, seconds after the header
-  stamp), e.g. Livox clouds aggregated by
-  [livox_bag_aggregate](https://github.com/MapsHD/livox_bag_aggregate), are
-  converted to that format automatically.
-
-## Step 1 — Clone with submodules
+On Zenodo the bag archive is split into `reg-1.zip.part-000`, `reg-1.zip.part-001`, etc.,
+download all parts, then merge and extract them:
 
 ```bash
-git clone https://github.com/MapsHD/benchmark-MAP_LIO-to-HDMapping.git --recursive
-cd benchmark-MAP_LIO-to-HDMapping
+cd ~/Downloads
+cat reg-1.zip.part-0* > full.zip
+zip -F full.zip --out full-fixed.zip
+unzip full-fixed.zip
 ```
 
-## Step 2 — Build the Docker image
+File `reg-1.bag-pc.bag` is an input for further calculations.
+It should be located in `~/hdmapping-benchmark/data`.
 
-```bash
+## Step 2 (prepare docker)
+```shell
+mkdir -p ~/hdmapping-benchmark
+cd ~/hdmapping-benchmark
+git clone https://github.com/MapsHD/benchmark-MAP_LIO-to-HDMapping.git --recursive
+cd benchmark-MAP_LIO-to-HDMapping
+git checkout Bunker-DVI-Dataset-reg-1
 docker build -t map-lio_noetic .
 ```
 
-This installs:
-- Ubuntu 20.04 + ROS 1 Noetic
-- Eigen3, PCL, GeographicLib and the ROS packages MAP_LIO needs
-- Sophus (non-templated version, the commit MAP_LIO pins)
-- catkin workspace with `map_lio` and `map_lio_to_hdmapping`
-
-## Step 3 — Run the pipeline
-
-```bash
+## Step 3 (run docker, file `reg-1.bag-pc.bag` should be in `~/hdmapping-benchmark/data`)
+```shell
+cd ~/hdmapping-benchmark/benchmark-MAP_LIO-to-HDMapping
 chmod +x docker_session_run-ros1-map-lio.sh
-./docker_session_run-ros1-map-lio.sh /path/to/input.bag /path/to/output/dir
+cd ~/hdmapping-benchmark/data
+~/hdmapping-benchmark/benchmark-MAP_LIO-to-HDMapping/docker_session_run-ros1-map-lio.sh reg-1.bag-pc.bag .
 ```
 
-Or with no arguments to use a GUI file selector (requires `zenity`).
+MAP_LIO reads the bag itself and processes it as fast as it can, so the run
+takes less time than the recording; the results keep the bag's timestamps.
+You can watch MAP_LIO build the map live in RViz:
 
-| Variable | Default | Meaning |
-|----------|---------|---------|
-| `CONFIG_FILE` | `hesai.yaml` | MAP_LIO parameter file: LiDAR/IMU topics, LiDAR-IMU extrinsics, noise, range limits. A file on the host, or the name of one shipped in the image |
-| `USE_RVIZ` | `1` | RViz live view |
+![MAP_LIO running in RViz](images/RVIZ.png)
 
-MAP_LIO's sensor setup lives in its parameter file. The image ships two:
+## Step 4 (Open and visualize data)
+Expected data should appear in `~/hdmapping-benchmark/data/output_hdmapping-MAP_LIO`.
+Use tool [multi_view_tls_registration_step_2](https://github.com/MapsHD/HDMapping) to open `session.json` from `~/hdmapping-benchmark/data/output_hdmapping-MAP_LIO`.
 
-| Name | Sensor |
-|------|--------|
-| `hesai.yaml` | MAP_LIO's own, Hesai LiDAR (`/hesai/pandar`, `/imu/data_raw`) |
-| `bunker.yaml` | Livox Mid-360 with its built-in IMU (`/livox/pointcloud`, `/livox/imu`), see [overlay/config/bunker.yaml](overlay/config/bunker.yaml) |
+![MAP_LIO session opened in HDMapping multi_view_tls_registration_step_2, top view](images/step2_1.png)
 
-For your own sensor, copy one of them, set `common/lid_topic`,
-`common/imu_topic` and the LiDAR-IMU extrinsics, and pass it:
+![MAP_LIO session opened in HDMapping multi_view_tls_registration_step_2, side view](images/step2_2.png)
 
-```bash
-CONFIG_FILE=/path/to/my_sensor.yaml \
-  ./docker_session_run-ros1-map-lio.sh /path/to/input.bag /path/to/output/dir
-```
+You should see the following data in folder `~/hdmapping-benchmark/data/output_hdmapping-MAP_LIO`:
 
-Before anything starts, the script checks that both topics of the parameter
-file are in the bag and looks at the LiDAR point format: Hesai points are used
-as they are, points with a relative per-point `time` are converted to the Hesai
-format first (inside the container, the input bag is not changed), anything
-else gets a warning (MAP_LIO then does not deskew the scans).
-
-**What happens:**
-
-The script opens a Docker container with a tmux session containing four panes
-on window 0 and a `control` window (window 1, the attach target):
-
-| Pane | Role |
-|------|------|
-| 0 | `roscore` |
-| 1 | `rosbag record /Odometry /cloud_registered` |
-| 2 | `roslaunch map_lio map_lio_bench.launch` — MAP_LIO reading your bag (+ RViz live view) |
-| 3 | diagnostics — shows active topics and publishing rates |
-
-MAP_LIO does not need `rosbag play`: it opens the bag itself and processes it
-as fast as it can. When it reports the end of the bag, the control window stops
-the recorder, kills all nodes and RViz, and exits tmux. A second Docker run then
-converts the recorded bag into the HDMapping session format.
-
-## Step 4 — Open in HDMapping
-
-Output files appear in `<output_dir>/output_hdmapping-MAP_LIO/`:
-
-```
 lio_initial_poses.reg
+
 poses.reg
-scan_lio_0.laz
-...
+
+scan_lio_*.laz
+
 session.json
-trajectory_lio_0.csv
-...
-```
 
-Open `session.json` with the
-[multi_view_tls_registration_step_2](https://github.com/MapsHD/HDMapping)
-application.
+trajectory_lio_*.csv
 
-## Notes on MAP_LIO
-
-MAP_LIO publishes:
-
-| Topic | Type | Meaning |
-|-------|------|---------|
-| `/Odometry` | `nav_msgs/Odometry` | the 6-DoF IMU (body) pose in the `world` frame, one per scan |
-| `/cloud_registered` | `sensor_msgs/PointCloud2` | the registered scan in the `world` frame, one per scan |
-| `/Laser_map` | `sensor_msgs/PointCloud2` | the local map, for display |
-
-The converter records `/Odometry` + `/cloud_registered`. MAP_LIO publishes the
-registered scan only while someone subscribes to it, so the recorder is started
-before MAP_LIO.
-
-**Timestamps:** the benchmark does not change MAP_LIO's clock (no
-`use_sim_time`). MAP_LIO reads the bag directly and stamps every output with the
-scan's end time taken from the input messages, so the result is in bag time
-without any translation.
-
-## Contact
-
+## Contact email
 januszbedkowski@gmail.com

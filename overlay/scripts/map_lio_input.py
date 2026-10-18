@@ -109,6 +109,7 @@ def main():
             names = [t for t, i in topics.items() if i.msg_type == msg_type]
             print(f"[input] {msg_type} topics in this bag: {', '.join(names) or '(none)'}")
         print("[input] Set common/lid_topic and common/imu_topic in the parameter file (CONFIG_FILE).")
+        print("[input] For the Bunker DVI dataset use reg-1.bag-pc.bag (LiDAR on /livox/pointcloud).")
         sys.exit(42)
 
     _, first, _ = next(bag.read_messages(topics=[lid_topic]))
