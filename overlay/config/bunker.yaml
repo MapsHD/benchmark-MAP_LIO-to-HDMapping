@@ -1,0 +1,45 @@
+# MAP_LIO parameters for the Bunker DVI dataset (Livox Mid-360 with its
+# built-in IMU, reg-1.bag-pc.bag). Upstream config/hesai.yaml with only the
+# sensor setup changed:
+#   - topics /livox/pointcloud and /livox/imu; the run script converts the
+#     Livox points to the Hesai point format first (lidar_type 0 stays)
+#   - time_sync_en false: LiDAR and IMU share the Livox clock
+#   - extrinsics: Mid-360 LiDAR origin in its IMU frame (rotation identity),
+#     the same values as FAST-LIO's mid360.yaml
+#   - dense_publish_en true: /cloud_registered carries the full deskewed scan
+#     instead of the downsampled one, for the HDMapping map (output only)
+common:
+    lid_topic :  "/livox/pointcloud"
+    imu_topic :  "/livox/imu"
+    gnss_topic:  "/gps/gps"
+    time_sync_en: false
+    time_offset_lidar_to_imu: 0.0 # Time offset between lidar and IMU
+                                  # This param will take effect no matter what time_sync_en is. So if the time offset is not known exactly, please set as 0.0
+preprocess:
+    lidar_type: 0                # 0 for hesai, # 1 for Velodyne, 2 for ouster,
+    point_step : 1               # i+= point_step
+    min_dist: .5
+    max_dist: 100
+
+mapping:
+    acc_cov:  0.1
+    gyr_cov:  0.1
+    b_acc_cov:  0.0001
+    b_gyr_cov:  0.0001
+    extrinsic_est_en: false      # true: enable the online estimation of IMU-LiDAR extrinsic
+
+    GNSS_IMU_calibration_distance: 30
+    #transform the point cloud to imu frame,  P_lidar seen from IMU will be P_imu = R*P_lidar+T
+    extrinsic_T: [ -0.011, -0.02329, 0.04412 ]
+    extrinsic_R: [ 1, 0, 0,
+                   0, 1, 0,
+                   0, 0, 1]
+
+als:
+    closest_N_files: 4
+    downsample: true
+    als_path: ""
+
+publish:
+    scan_publish_en:  true
+    dense_publish_en: true
