@@ -78,7 +78,15 @@ RUN git clone https://github.com/strasdat/Sophus.git /opt/Sophus && \
 # ── Build catkin workspace (MAP_LIO + converter) ─────────────────────────────
 WORKDIR /ros_ws
 
-COPY ./src/MAP_LIO              ./src/MAP_LIO
+# MAP_LIO is cloned here at a pinned commit instead of being a submodule of
+# this repository: it records third_party/{LASzip,Sophus,libLAS} as submodules
+# without a .gitmodules, which makes every recursive clone of a repository
+# containing it abort ("No url found for submodule path"). A plain clone
+# ignores them; Sophus is built above, LASzip/libLAS are only for USE_ALS.
+ARG MAP_LIO_COMMIT=6963a5af49bd7161dbe81081f53baca6b4f481c8
+RUN git clone https://github.com/eugeniu1994/MAP_LIO.git ./src/MAP_LIO && \
+    git -C ./src/MAP_LIO checkout "$MAP_LIO_COMMIT"
+
 COPY ./src/map-lio-to-hdmapping ./src/map-lio-to-hdmapping
 
 # Benchmark launch (bag file and parameter file as roslaunch args) and the
