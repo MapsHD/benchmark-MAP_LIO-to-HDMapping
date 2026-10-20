@@ -1,6 +1,3 @@
-[submodule "src/MAP_LIO"]
-	path = src/MAP_LIO
-	url = https://github.com/eugeniu1994/MAP_LIO.git
 [submodule "src/map-lio-to-hdmapping/src/3rdparty/LASzip"]
 	path = src/map-lio-to-hdmapping/src/3rdparty/LASzip
 	url = https://github.com/LASzip/LASzip.git
